@@ -6,7 +6,7 @@ return [
         'handler' => Saithink\NatClient\Client::class,
         'reloadable' => false,
         'constructor' => [
-            'debug' => true
+            'debug' => false
         ]
     ]
 ];
