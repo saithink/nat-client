@@ -31,10 +31,10 @@ class Client
     protected $token = '';
 
     /**
-     * current app
+     * current apps
      * @var array
      */
-    protected $app = [];
+    protected $apps = [];
 
     /**
      * number of connection failures with the server
@@ -103,10 +103,10 @@ class Client
                     return;
                 // delivery configuration
                 case 'setting':
-                    $app = $data['setting'];
-                    echo $logs = "Nat-Client：成功获取配置 \n" . var_export($app, true) ."\n";
+                    $apps = $data['setting'];
+                    echo $logs = "Nat-Client：成功获取配置 \n" . var_export($apps, true) ."\n";
                     $this->debugLog($logs);
-                    $this->createConnection($app);
+                    $this->createConnections($apps);
                     return;
                 // unknown
                 default :
@@ -127,21 +127,23 @@ class Client
     }
 
     /**
-     * createConnection
+     * createConnections
      * @return void
      */
-    protected function createConnection($app)
+    protected function createConnections($apps)
     {
-        $domain = $app['domain'];
-        if (isset($this->app['domain']) && $this->app['domain'] === $domain) {
-            return;
+        foreach ($apps as $app) {
+            $domain = $app['domain'];
+            if (isset($this->apps[$domain])) {
+                continue;
+            }
+            for ($i = 0; $i < static::PRE_CONNECTION_COUNT; $i++) {
+                Timer::add($i + 0.001, function () use ($domain) {
+                    $this->createConnectionToServer($domain);
+                }, null, false);
+            }
         }
-        for ($i = 0; $i < static::PRE_CONNECTION_COUNT; $i++) {
-            Timer::add($i + 0.001, function () use ($domain) {
-                $this->createConnectionToServer($domain);
-            }, null, false);
-        }
-        $this->app = $app;
+        $this->apps = $apps;
     }
 
     /**
@@ -150,7 +152,7 @@ class Client
      */
     public function createConnectionToServer($domain)
     {
-        if (!isset($this->app['domain']) || $this->app['domain'] !== $domain) {
+        if (!isset($this->apps[$domain])) {
             $this->debugLog("Nat-Client：因域名 $domain 在配置中不存在而忽略");
             return;
         }
@@ -163,8 +165,8 @@ class Client
         };
         $serverConnection->onMessage = function ($serverConnection, $data) use ($domain) {
             $this->debugLog("Nat-Client：Client request");
-            $localIp = $this->app['local_ip'];
-            $localPort = $this->app['local_port'];
+            $localIp = $this->apps[$domain]['local_ip'];
+            $localPort = $this->apps[$domain]['local_port'];
             $localConnection = new AsyncTcpConnection("tcp://$localIp:$localPort");
             $localConnection->send($data);
             $localConnection->pipe($serverConnection);
@@ -173,7 +175,8 @@ class Client
             $this->createConnectionToServer($domain);
         };
         $serverConnection->onClose = function ($serverConnection) use ($domain) {
-            if (isset($this->app['domain']) && $this->app['domain'] === $domain) {
+            if (isset($this->apps[$domain])) {
+                // 如果连接失败，则定时重连时间累加
                 $count = $this->connectFailCount;
                 if($count === 0) {
                     $this->createConnectionToServer($domain);
