@@ -13,8 +13,5 @@
             "name": "saithink",
             "email": "1430792918@qq.com"
         }
-    ],
-    "require": {
-		"saithink/saiadmin": "^3.0"
-	}
+    ]
 }
